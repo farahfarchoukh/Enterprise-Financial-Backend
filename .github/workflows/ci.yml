@@ -1,11 +1,28 @@
-name: CI
-on: [push]
+name: CI Pipeline
+
+on: [push, pull_request]
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with: { python-version: '3.11' }
-      - run: pip install -r requirements.txt
-      - run: pytest tests/
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+        
+      - name: Run Tests
+        env:
+          # This tells GitHub to take the secrets you saved and put them in the app
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+          # We can set these directly here for testing
+          DATABASE_URL: "sqlite+aiosqlite:///./test.db"
+          LOG_LEVEL: "INFO"
+        run: pytest tests/
+        
