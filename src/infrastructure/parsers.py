@@ -16,32 +16,35 @@ class QuickBooksParser(ParserStrategy):
         except json.JSONDecodeError:
             raise ValueError("Invalid JSON file")
 
-        # Smart Heuristic: Find the list!
+        # --- SMART HEURISTIC LOGIC (The Fix) ---
         items = []
         if isinstance(raw_json, list):
             items = raw_json
         elif isinstance(raw_json, dict):
-            # Look for the first key that contains a list (common in JSON exports)
+            # 1. Look for any key that holds a list
+            found_list = False
             for key, value in raw_json.items():
                 if isinstance(value, list) and len(value) > 0:
                     items = value
+                    found_list = True
                     break
-            # If no list found, maybe the dict itself is one record?
-            if not items:
+            
+            # 2. If no list found, maybe the dict itself is the record?
+            if not found_list:
                 items = [raw_json]
 
         results = []
         for i in items:
-            if not isinstance(i, dict): continue # Skip weird data
+            if not isinstance(i, dict): continue 
             
-            # Normalize keys to lowercase
+            # Normalize keys to lowercase (e.g. "Amount" -> "amount")
             i_low = {k.lower(): v for k, v in i.items()}
             
-            # Extract fields with fallbacks
+            # Extract fields with multiple fallback names
             amt = float(i_low.get("amount", i_low.get("value", 0)))
             r_type = i_low.get("type", "Unknown")
             
-            # Flip sign for expenses if positive
+            # Flip sign for expenses if they are positive
             if "expense" in r_type.lower() and amt > 0:
                 amt = -amt
 
@@ -50,7 +53,10 @@ class QuickBooksParser(ParserStrategy):
             try:
                 dt = datetime.strptime(date_str, "%Y-%m-%d").date()
             except:
-                dt = datetime.now().date() # Fallback
+                try:
+                    dt = datetime.strptime(date_str, "%d-%m-%Y").date()
+                except:
+                    dt = datetime.now().date() # Fallback today
 
             results.append(TransactionDTO(
                 date=dt,
