@@ -35,11 +35,9 @@ You are a CFO. Interpret the database results provided.
 class FinancialAgent:
     def __init__(self, db: AsyncSession):
         self.db = db
-        # 1. Primary Client (OpenAI)
         self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
         
-        # 2. Fallback Client (Groq)
-        # FIX: Read directly from settings, not os.getenv
+        # FIX: Use Pydantic settings
         self.groq_api_key = settings.GROQ_API_KEY 
         
         self.groq_client = AsyncOpenAI(
@@ -47,8 +45,36 @@ class FinancialAgent:
             api_key=self.groq_api_key
         )
 
+        # PRIORITY LIST: Try these in order. Stops guessing games.
+        self.groq_models = [
+            "llama-3.3-70b-versatile",  # Flagship
+            "llama-3.1-70b-versatile",  # Backup High-End
+            "llama-3.1-8b-instant",     # Ultra-Fast/Stable (The "Cockroach" model)
+            "gemma2-9b-it"              # Google Backup
+        ]
+
+    async def _call_groq_fallback(self, messages: List[Dict], temperature: float):
+        """Iterate through models until one works"""
+        last_error = None
+        for model in self.groq_models:
+            try:
+                print(f" Attempting Groq Model: {model}...")
+                response = await self.groq_client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature
+                )
+                print(f" Success with {model}")
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f" Failed {model}: {e}")
+                last_error = e
+                continue # Try next model
+        
+        raise last_error # All failed
+
     async def _call_llm(self, messages: List[Dict], temperature: float = 0):
-        # Try OpenAI
+        # 1. Try OpenAI
         try:
             response = await self.openai_client.chat.completions.create(
                 model=settings.AI_MODEL,
@@ -57,23 +83,16 @@ class FinancialAgent:
             )
             return response.choices[0].message.content
         except Exception as e:
-            print(f" Primary AI (OpenAI) Failed: {e}")
+            print(f"⚠️ Primary AI (OpenAI) Failed: {e}")
             
-            # Try Groq Fallback
+            # 2. Try Groq Loop
             if self.groq_api_key and len(self.groq_api_key) > 5:
-                print(" Switching to Fallback AI (Groq/Llama3)...")
                 try:
-                    response = await self.groq_client.chat.completions.create(
-                        model="mixtral-8x7b-32768", 
-                        messages=messages,
-                        temperature=temperature
-                    )
-                    return response.choices[0].message.content
+                    return await self._call_groq_fallback(messages, temperature)
                 except Exception as groq_e:
-                    print(f" Groq Also Failed: {groq_e}")
+                    print(f" All Groq Models Failed.")
                     raise groq_e
             else:
-                print(" No Groq API Key found in Settings.")
                 raise e
 
     async def run(self, question: str, history: List[Dict]):
@@ -115,10 +134,9 @@ class FinancialAgent:
             }
 
         except Exception as e:
-            # Only hit this if BOTH AI models fail
             print(f" ALL SYSTEMS FAILURE: {e}")
             return {
-                "answer": "[DEMO MODE] All AI Providers unavailable. Displaying mock data to preserve UI.",
+                "answer": "[DEMO MODE] AI Providers unavailable (Billing/Model Rot). Logic Intact.",
                 "data_points": [{"mock_revenue": 50000}],
                 "generated_sql": "SELECT SUM(amount) -- Mock"
             }
