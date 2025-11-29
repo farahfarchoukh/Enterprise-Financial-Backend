@@ -1,6 +1,6 @@
-# Kudwa Financial Intelligence Engine (Enterprise Edition)
+# Financial Intelligence Engine (Enterprise Edition)
 
-# Kudwa Financial Intelligence Engine
+# Financial Intelligence Engine
 
 **A Production-grade AI Platform for Financial Data Integration & Analysis.**
 
